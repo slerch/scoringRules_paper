@@ -1,2 +1,1 @@
-# scoringRules_paper
-Replication material for paper on the R package scoringRules
+Source code in `scoringRules_paper.R` allows to reproduce numerical results and figures from Jordan, A., Krüger, F. and Lerch, S. (2017). Evaluating probabilistic forecasts with the R package scoringRules. Working paper, available at XXXX
