@@ -1,272 +1,399 @@
-## ----setup, echo=FALSE---------------------------------------------------
+## ----preliminaries, echo=FALSE, results='hide'---------------------------
+# Using knitr for manuscript
 library(knitr)
-thm = knit_theme$get("default")
-knit_theme$set(thm)
+render_sweave()
+opts_chunk$set(engine='R', tidy=FALSE)
 
-# for inline R code highlighting
-knit_hooks$set(inline = function(x) { 
-  if (is.numeric(x)) return(knitr:::format_sci(x, 'latex')) 
-  highr:::hi_latex(x) 
-}) 
-opts_chunk$set(concordance=TRUE)
+# JSS code formatting
+options(prompt = "R> ", continue = "+  ", width = 70, useFancyQuotes = FALSE)
+
+# Formatting
 options(scipen = 1, digits = 3)
+Sys.setenv(LANG = 'en')
 
-## ----eval=FALSE----------------------------------------------------------
-## crps(y, ...)
-## logs(y, ...)
-## 
-## ## S3 method for class 'numeric'
-## crps(y, family, ...)
-## logs(y, family, ...)
-
-## ----echo=FALSE----------------------------------------------------------
-rm(list=ls())
-library(scoringRules)
+# RNG initialization
 set.seed(42)
 
-## ------------------------------------------------------------------------
+# Required packages
+library(scoringRules)
+library(crch)
+
+## ----Section-Package-design-and-functionality, echo=FALSE----------------
+
+## ----Subsection-Parametric-predictive-distribution, echo=FALSE-----------
+
+## ----Parametric-score-example-1------------------------------------------
+library("scoringRules")
 obs <- rnorm(10)
-crps(obs, family = "normal", mean = c(1:10), sd = c(1:10))
-logs(obs, family = "normal", mean = c(1:10), sd = c(1:10))
+crps(obs, "norm", mean = c(1:10), sd = c(1:10))
+crps_norm(obs, mean = c(1:10), sd = c(1:10))
 
-## ----echo=FALSE----------------------------------------------------------
-plot_prepared_background <- function() {
-	plot(NULL, type = "n", xlim = c(0, 9), ylim = c(0, 5), bty = "n", 
-	     xlab = "Observation y", ylab = "Score value")
-	z <- seq(0, 9, .01)
-	bg <- 15 * dgamma(z, shape = 2, scale = 1.5)
-	polygon(c(z, rev(z)), c(rep(0, length(bg)), rev(bg)), 
-	        col="gray80", border="gray80")
-	legend("top", bty = "n", legend = c("LogS", "CRPS"), 
-	       col = c("purple", "darkorange"), lty = c(1,1), 
-	       lwd = c(2,2))
-}
+## ----Parametric-score-example-3------------------------------------------
+crps_y <- function(y) crps_gamma(y, shape = 2, scale = 1.5)
+logs_y <- function(y) logs_gamma(y, shape = 2, scale = 1.5)
 
-## ----score-illustration, echo=TRUE,  dev='pdf', fig.width=4, fig.height=4----
-plot_prepared_background() # initializing plot
+## ----Parametric-score-illustration, echo=FALSE, dev='pdf', fig.width=10.4, fig.height=4.1, fig.align="center", out.width = "\\linewidth"----
+# Initialize plot
+par(mai = c(0.9, 3.5, 0.3, 3.4), cex = 1.1)
+plot(NULL, type = "n", bty = "n",
+  xlim = c(0, 9), ylim = c(0, 5),
+  xlab = "Observation y", ylab = "Score value",
+  xaxt = "n", yaxt = "n")
+axis(1, at = c(0, 4, 8))
+axis(2, at = c(0, 2.5, 5))
 
-crps_y <- function(y) crps(y, family = "gamma", shape = 2, scale = 1.5)
-logs_y <- function(y) logs(y, family = "gamma", shape = 2, scale = 1.5)
+# Draw predictive density in background
+z <- seq(0, 9, .01)
+bg <- 15 * dgamma(z, shape = 2, scale = 1.5)
+polygon(c(z, rev(z)), c(rep(0, length(bg)), rev(bg)), 
+  col="gray80", border="gray80")
+
+# Add legend
+legend("top", bty = "n", legend = c("LogS", "CRPS"), 
+  col = c("purple", "darkorange"),
+  lty = c(1, 1), lwd = c(2, 2))
+  
+# Add score functions
 plot(crps_y, from = 0, to = 9, col = "darkorange", lwd = 2, add = TRUE)
 plot(logs_y, from = 0, to = 9, col = "purple", lwd = 2, add = TRUE)
 
-## ----echo=TRUE, eval=FALSE-----------------------------------------------
-## crps_norm(y, mean = 0, sd = 1, location = mean, scale = sd)
-## logs_norm(y, mean = 0, sd = 1, location = mean, scale = sd)
+## ----Subsection-Simulated-predictive-distribution, echo=FALSE------------
 
-## ----eval=FALSE----------------------------------------------------------
-## crps_sample(y, dat, method = "edf", w = NULL, bw = NULL,
-##             num_int = FALSE, show_messages = TRUE)
-## logs_sample(y, dat, bw = NULL, show_messages = TRUE)
+## ----Simulated-score-example-1-------------------------------------------
+obs_n <- c(0, 1, 2)
+sample_nm <- matrix(rnorm(3e4, mean = 2, sd = 3), nrow = 3)
+crps_sample(obs_n, dat = sample_nm)
+logs_sample(obs_n, dat = sample_nm)
 
-## ------------------------------------------------------------------------
-# single observation
-obs <- rnorm(1)
-sample <- rnorm(1e4, mean = 2, sd = 3)
-crps_sample(obs, dat = sample)  
-logs_sample(obs, dat = sample, show_messages = FALSE)
-
-# multiple observations
-obs2 <- rnorm(2)
-sample2 <- matrix(rnorm(2e4, mean = 2, sd = 3), nrow = 2)
-crps_sample(obs2, dat = sample2)
-logs_sample(obs2, dat = sample2, show_messages = FALSE)
-
-## ------------------------------------------------------------------------
-ngrid <- seq(from = 50, to = length(sample), by = 50)
-crps_approx <- logs_approx <- numeric(length(ngrid))
-for (i in seq_along(ngrid)) {
-  size <- ngrid[i]
-  crps_approx[i] <- crps_sample(obs, dat = sample[1:size])
-  logs_approx[i] <- logs_sample(obs, dat = sample[1:size],
-                                show_messages = FALSE)
+## ----Simulated-score-example-2-------------------------------------------
+R <- 500
+M <- 5e3
+mgrid <- exp(seq(log(50), log(M), length.out = 51))
+crps_approx <- matrix(NA, nrow = R, ncol = length(mgrid))
+logs_approx <- matrix(NA, nrow = R, ncol = length(mgrid))
+obs_1 <- 2
+for (r in 1:R) {
+  sample_M <- rnorm(M, mean = 2, sd = 3)
+  for (i in seq_along(mgrid)) {
+    m <- mgrid[i]
+    crps_approx[r, i] <- crps_sample(obs_1, dat = sample_M[1:m])
+    logs_approx[r, i] <- logs_sample(obs_1, dat = sample_M[1:m])
+  }
 }
 
-## ----echo=FALSE----------------------------------------------------------
-crps_true <- crps(obs, family = "normal", mean = 2, sd = 3)
-logs_true <- logs(obs, family = "normal", mean = 2, sd = 3)
+## ----Simulated-score-illustration, echo=FALSE, dev='pdf', fig.width=10.4, fig.height=4.2, fig.align ="center", out.width = "\\linewidth"----
+crps_true <- crps(obs_1, family = "normal", mean = 2, sd = 3)
+logs_true <- logs(obs_1, family = "normal", mean = 2, sd = 3)
 
-## ----plot1, echo=FALSE, dev='pdf', fig.width=8, fig.height=4-------------
-every2nd <- function(x) x[(1:length(x)) %% 2 == 0]
-xax <- every2nd(pretty(1:max(ngrid)))
+par(mai = c(.9, .9, .3, .3), pty = "s", cex = 1.1, omi = c(0, .7, 0, 1.3))
+layout(matrix(1:2, nrow = 1))
 
-par(mfrow = c(1,2), mar = c(5, 4, 2, 2) + 0.1)
-
+# CRPS plot
+norm <- quantile(crps_approx[, 1], probs = 0.95) - 
+  quantile(crps_approx[, 2], probs = 0.05)
 plot(NULL, type = "n", bty = "n",
      main = "CRPS", xlab = "Sample size", ylab = "Score value",
-     xlim = c(0, 1e4), ylim = crps_true + c(-0.1, 0.1), xaxt = "n")
-axis(1, at = xax)
+     xlim = c(min(mgrid), max(mgrid)),
+     ylim = crps_true + c(-1, 1) * 0.8 * norm,
+     xaxt = "n", yaxt = "n", log = "x")
+axis(1, at = c(50, 500, 5000))
+axis(2, at = c(.5, .7, .9))
+polygon(c(mgrid, rev(mgrid)),
+        c(apply(crps_approx, 2, quantile, probs = 0.95),
+          rev(apply(crps_approx, 2, quantile, probs = 0.05))),
+        col = "lightgrey", border = NA)
+lines(mgrid, apply(crps_approx, 2, mean), col = "darkgrey", lwd = 2)
 abline(h = crps_true, lty = 2)
-lines(ngrid, crps_approx, col = "darkorange", lwd = 2)
+lines(mgrid, crps_approx[1, ], col = "darkorange", lwd = 2)
 
+
+# LogS plot
+norm <- quantile(logs_approx[, 1], probs = 0.95) -
+  quantile(logs_approx[, 2], probs = 0.05)
 plot(NULL, type = "n", bty = "n",
-     main = "LogS", xlab = "Sample size", ylab = "Score value",
-     xlim = c(0, 1e4), ylim = logs_true + c(-0.12, 0.12), xaxt = "n")
-axis(1, at = xax)
+     main = "LogS", xlab = "Sample size", ylab = "",
+     xlim = c(min(mgrid), max(mgrid)),
+     ylim = logs_true + c(-1, 1) * .8 * norm,
+     xaxt = "n", yaxt = "n", log = "x")
+axis(1, at = c(50, 500, 5000))
+axis(2, at = c(1.7, 2.0, 2.3))
+polygon(c(mgrid, rev(mgrid)),
+        c(apply(logs_approx, 2, quantile, probs = 0.95),
+          rev(apply(logs_approx, 2, quantile, probs = 0.05))),
+        col = "lightgrey", border = NA)
+lines(mgrid, apply(logs_approx, 2, mean), col = "darkgrey", lwd = 2)
 abline(h = logs_true, lty = 2)
-lines(ngrid, logs_approx, col = "purple", lwd = 2)
+lines(mgrid, logs_approx[1, ], col = "purple", lwd = 2)
 
-## ------------------------------------------------------------------------
-# From Messner et al. (2016):
-library(crch)
-data(RainIbk)
+## ----Section-Usage-examples, echo=FALSE----------------------------------
+
+## ----Subsection-Probabilistic-weather-forecasting-via-ensemble-post-processing, echo=FALSE----
+
+## ----Prepare-post-processing-example-------------------------------------
+library("crch")
+data("RainIbk", package = "crch")
 RainIbk <- sqrt(RainIbk)
-RainIbk$ensmean <- apply(RainIbk[,grep('^rainfc',names(RainIbk))], 1, mean)
-RainIbk$enssd <- apply(RainIbk[,grep('^rainfc',names(RainIbk))], 1, sd)
+ensfc <- RainIbk[, grep('^rainfc', names(RainIbk))]
+RainIbk$ensmean <- apply(ensfc, 1, mean)
+RainIbk$enssd <- apply(ensfc, 1, sd)
 RainIbk <- subset(RainIbk, enssd > 0)
 
-## ----tidy=FALSE----------------------------------------------------------
+## ----Splitting-data------------------------------------------------------
 data_train <- subset(RainIbk, as.Date(rownames(RainIbk)) <= "2004-11-30")
 data_eval <- subset(RainIbk, as.Date(rownames(RainIbk)) >= "2005-01-01")
 
+## ----Forecasting-Gauss---------------------------------------------------
 CRCHgauss <- crch(rain ~ ensmean | log(enssd), data_train,
-                  dist = "gaussian", left = 0)
+  dist = "gaussian", left = 0)
+gauss_mu <- predict(CRCHgauss, data_eval, type = "location")
+gauss_sc <- predict(CRCHgauss, data_eval, type = "scale")
 
-## ----echo=FALSE----------------------------------------------------------
+## ----Forecasting-logis-stud, echo=FALSE----------------------------------
 CRCHlogis <- crch(rain ~ ensmean | log(enssd), data = data_train, 
 left = 0, dist = "logistic")
 CRCHstud <- crch(rain ~ ensmean | log(enssd), data = data_train, 
 left = 0, dist = "student")
-
-## ----tidy=TRUE-----------------------------------------------------------
-gauss_mu <- predict(CRCHgauss, data_eval, type = "location")
-gauss_sc <- predict(CRCHgauss, data_eval, type = "scale")
-
-ens_fc <- data_eval[, grep('^rainfc', names(RainIbk))]
-
-## ----echo=FALSE----------------------------------------------------------
 logis_mu <- predict(CRCHlogis, data_eval, type = "location")
 logis_sc <- predict(CRCHlogis, data_eval, type = "scale")
 stud_mu <- predict(CRCHstud, data_eval, type = "location")
 stud_sc <- predict(CRCHstud, data_eval, type = "scale")
 stud_df <- CRCHstud$df
 
-## ----postprocplot, echo=FALSE, warning=FALSE, message=FALSE, dev='pdf', fig.width=6, fig.asp=1/1----
+## ----Forecasting-raw-----------------------------------------------------
+ens_fc <- data_eval[, grep('^rainfc', names(RainIbk))]
+
+## ----Post-processing-example-illustration, echo=FALSE, dev='pdf', fig.width=10.4, fig.height = 3.7, fig.align="center", out.width="\\linewidth"----
+# Layout
+m <- matrix(c(1, 2, 3), nrow = 1)
+layout(mat = m, widths = c(3.55, 2.95, 3.90))
+par(pty = "s", cex = 1.1)
+
+# Looping through forecast cases
 ID.list <- c(206,953,2564)
-
-m <- matrix(c(1,2,3,4), nrow = 2, ncol = 2, byrow = TRUE)
-layout(mat = m,heights = c(0.5,0.5))
-par(mar = c(5,4,2,1))   
-
 for(ID in ID.list){
   col.logis <- "blue"
   col.gauss <- "green3"
   col.stud <- "darkorange"
-  
+
+  # Forecast densities
   z <- seq(0,10,0.01)
-  flogis.plot <- flogis(z, logis_mu[ID], logis_sc[ID], lower = 0, lmass = "cens")
+  flogis.plot <- suppressWarnings(
+    flogis(z, logis_mu[ID], logis_sc[ID], lower = 0, lmass = "cens"))
   flogis.p0 <- plogis(0, logis_mu[ID], logis_sc[ID])
-  fnorm.plot <- fnorm(z, gauss_mu[ID], gauss_sc[ID], lower = 0, lmass = "cens")
+  fnorm.plot <- suppressWarnings(
+    fnorm(z, gauss_mu[ID], gauss_sc[ID], lower = 0, lmass = "cens"))
   fnorm.p0 <- pnorm(0, gauss_mu[ID], gauss_sc[ID])
-  fstud.plot <- ft(z, stud_df, stud_mu[ID], stud_sc[ID], lower = 0, lmass = "cens")
+  fstud.plot <- suppressWarnings(
+    ft(z, stud_df, stud_mu[ID], stud_sc[ID], lower = 0, lmass = "cens"))
   fstud.p0 <- pt(-stud_mu[ID] / stud_sc[ID], stud_df)
+
+  # Reset margins  
+  if (ID == ID.list[1]) par(mai = c(0.9, 0.9, 0.3, 0.15))
+  if (ID == ID.list[2]) par(mai = c(0.9, 0.3, 0.3, 0.15))
+  if (ID == ID.list[3]) par(mai = c(0.9, 0.3, 0.3, 1.1))
   
-  p0.offset <- 0.2
-  yrange <- c(-0.025,0.24)
-  if(ID == ID.list[3]){yrange <- c(-0.025,0.47)}
-  plot(z, flogis.plot, type = "l", bty = "n", col = col.logis, 
-       ylim = yrange, xlim = c(-0.4,10),
-       ylab = "Density", xlab = "Precipitation amount in mm", 
-       main = rownames(data_eval)[ID])
-  segments(0, 0, 0, flogis.p0, col = col.logis, lwd = 3)
+  # Initializing plot
+  plot(NULL, type = "n", bty = "n", xaxt = "n", yaxt = "n",
+    ylim = c(-0.025, 0.5), xlim = c(-0.4,10),
+    xlab = "Precipitation amount in mm",
+	ylab = ifelse(ID == ID.list[1], "Density", ""),
+	main = rownames(data_eval)[ID])
+  axis(1, at = c(0, 5, 10))
+  if (ID == ID.list[1]) axis(2, at = c(0, 0.25, 0.5))
+  
+  # Add predictive densities
+  lines(z, flogis.plot, col = col.logis)
   lines(z, fnorm.plot, col = col.gauss)
-  segments(-p0.offset, 0, -p0.offset, fnorm.p0, col = col.gauss, lwd = 3)
-  lines(z, fstud.plot, col = col.stud)
+  lines(z, fstud.plot, col = col.stud)	  
+
+  # Add segments for point mass at zero
+  p0.offset <- 0.2
+  segments(0, 0, 0, flogis.p0, col = col.logis, lwd = 3)	  
+  segments(-p0.offset, 0, -p0.offset, fnorm.p0, col = col.gauss, lwd = 3)	  
   segments(-2*p0.offset, 0, -2*p0.offset, fstud.p0, col = col.stud, lwd = 3)
-  segments(0, 0, 0, flogis.p0, col = col.logis, lwd = 3) 
-  segments(data_eval$rain[ID], 0, data_eval$rain[ID], yrange[2], lty = 2)
+	  
+  # Add observation
+  segments(data_eval$rain[ID], 0, data_eval$rain[ID], 0.5, lty = 2)
+	  
+  # Add ensemble forecast
   ens.fc <- as.numeric(data_eval[, grep('^rainfc',names(RainIbk))][ID,])
-  for(j in 1:length(ens.fc)){segments(ens.fc[j], -0.025, ens.fc[j], -0.005)}
+  for (j in 1:length(ens.fc)) {
+    segments(ens.fc[j], -0.025, ens.fc[j], -0.005)
+  }
 }
 
-par(mar = c(0,0,0,0))
-plot(1, type = "n", axes=FALSE, xlab="", ylab="")
-legend("center", inset = 0,
-       legend = c("censored logistic", "censored Gaussian", "censored Student t"), 
-       lty = rep(1,3), col = c("blue", "green3", "darkorange"), 
-       ncol = 1, bty ="n")
+# Add legend
+par(xpd = TRUE)
+legend(6.5, .45, bty = "n",
+  legend = c("cens. logistic", "cens. Gaussian", "cens. Student's t"),
+  col = c("blue", "green3", "darkorange"),
+  lty = rep(1,3), ncol = 1)
 
-## ----tidy=FALSE----------------------------------------------------------
+## ----Computing-scores-Gauss----------------------------------------------
 obs <- data_eval$rain
 gauss_crps <- crps(obs, family = "cnorm", location = gauss_mu, 
-                   scale = gauss_sc, lower = 0, upper = Inf)
+  scale = gauss_sc, lower = 0, upper = Inf)
 ens_crps <- crps_sample(obs, dat = as.matrix(ens_fc))
 
-## ----echo=FALSE----------------------------------------------------------
+## ----Computing-scores-logis-stud, echo=FALSE-----------------------------
 logis_crps <- crps(obs, family = "clogis", location = logis_mu, 
-                   scale = logis_sc, lower = 0, upper = Inf)
+scale = logis_sc, lower = 0, upper = Inf)
 stud_crps <- crps(obs, family = "ct", df = stud_df, location = stud_mu, 
-                  scale = stud_sc, lower = 0, upper = Inf)
+scale = stud_sc, lower = 0, upper = Inf)
 
-## ----eval=TRUE, echo=FALSE-----------------------------------------------
-df <- data.frame(mean(logis_crps), mean(gauss_crps), mean(stud_crps), 
-				 sprintf("%1.3f", mean(ens_crps)))
-names(df) <- c("CRCHlogis", "CRCHgauss", "CRCHstud", "Ensemble")
-print(df, row.names = FALSE)
+## ----Calculating-average-scores------------------------------------------
+scores <- data.frame(CRCHlogis = logis_crps, CRCHgauss = gauss_crps,
+  CRCHstud = stud_crps, Ensemble = ens_crps)
+sapply(scores, mean)
 
-## ----eval=TRUE, echo=TRUE, message=FALSE, tidy=FALSE---------------------
-data(gdp)
+## ----Subsection-Bayesian-forecasts-of-US-GDP-growth-rate, echo=FALSE-----
 
-# Get training data (2014Q1 vintage; data until 2013Q4)
-# Get evaluation data (2015Q1 vintage; data from 2014)
-data_train <- subset(gdp, vint == "2014Q1") # 267 observations
-data_eval <- subset(gdp, vint == "2015Q1" & grepl("2014", dt)) # 4 obs.
+## ----Data-MCMC-example---------------------------------------------------
+data("gdp", package = "scoringRules")
+data_train <- subset(gdp, vint == "2014Q1")
+data_eval <- subset(gdp, vint == "2015Q1" & grepl("2014", dt))
 
-# Draw predictive model parameters
-h <- 4L; n <- 20000L
-fc_params <- ar_ms(data_train$val, forecast_periods = h, n_rep = n)
+## ----Sampling-MCMC-forecast-parameters-----------------------------------
+h <- 4
+m <- 20000
+fc_params <- ar_ms(data_train$val, forecast_periods = h, n_rep = m)
 
-## ----eval=TRUE, echo=TRUE, message=FALSE---------------------------------
-# Mixture-of-normals approximation
-m <- t(fc_params$fcMeans) # matrix[4 * 20000] of means
-s <- t(fc_params$fcSds) # matrix[4 * 20000] of standard deviations
-w <- matrix(1/n, nrow = h, ncol = n) # matrix of (equal) mixture weights
-# Sample approximation
-sample <- matrix(rnorm(h * n, mean = m, sd = s), nrow = h, ncol = n)
+## ----Regularize-forecast-parameter-data-format---------------------------
+mu <- t(fc_params$fcMeans)
+Sd <- t(fc_params$fcSds)
 
-## ----mcmcplot, echo=FALSE, warning=FALSE, message=FALSE, dev='pdf', fig.width=6, fig.asp=1/1----
+## ----Sampling-ensemble-forecast-from-MCMC-forecast-----------------------
+X <- matrix(rnorm(h * m, mean = mu, sd = Sd), nrow = h, ncol = m)
+
+## ----MCMC-example-illustration, echo=FALSE, dev='pdf', fig.width=10.4, fig.height = 3.2, fig.align = "center", out.width="\\linewidth"----
+# Mixture density function constructor
 fmix <- function(m, s) {
-	function(x) {
-		40000 * sapply(x, function(z) mean(dnorm(z, mean = m, sd = s)))
-	}
+  function(x) {
+    40000 * sapply(x, function(z) mean(dnorm(z, mean = m, sd = s)))
+  }
 }
 
-# Plot histograms
-layout(mat = matrix(c(1,2,3,4), nrow = 2, ncol = 2, byrow = TRUE),
-heights = c(0.5, 0.5))
-par(mar = c(5,4,2,1))
+# Layout
+layout(mat = matrix(1:4, nrow = 1), widths = c(3.05, 2.45, 2.45, 2.45))
+par(mai = c(0.9, 0.9, 0.3, 0.15), pty = "s", cex = 1.1)
+
+# Loop through forecast cases
 for (jj in seq_along(data_eval$dt)) {
-act <- data_eval$val[jj]
-x <- sample[jj, ]
+  # Get observation and created ensemble forecast
+  act <- data_eval$val[jj]
+  x <- X[jj, ]
 
-hist(x, main = data_eval$dt[jj], xlab = "", yaxt = "n",
-xlim = c(-20, 20), ylim = c(0, 8000))
-axis(2, at = c(0, 2000, 4000, 6000, 8000))
-segments(act, 0, act, 8000, lty = 2)
-plot(fmix(m[jj, ], s[jj, ]), from = min(x), to = max(x), 
-     lwd = 2, add = TRUE)
+  # Histogram for ensemble forecast
+  hist(x, xaxt = "n", yaxt = "n", main = data_eval$dt[jj],
+    xlab = "Growth rate in %", ylab = ifelse(jj == 1, "Frequency", ""),
+    xlim = c(-10, 15), ylim = c(0, 8000))
+  axis(1, at = c(-10, 0, 15))
+  if (jj == 1) axis(2, at = c(0, 4000, 8000))
+  
+  # Add observation
+  segments(act, 0, act, 8000, lty = 2)
+  # Add mixture-of-parameters density
+  plot(fmix(mu[jj, ], Sd[jj, ]), from = min(x), to = max(x), lwd = 2, add = TRUE)
+
+  # Reduce extra spacing (y-axis) for remaining plots
+  if (jj == 1) par(mai = c(0.9, 0.3, 0.3, 0.15))
 }
 
-## ----eval=TRUE, echo=TRUE, message=FALSE---------------------------------
-# Compute scores
+## ----MCMC-example-scores-------------------------------------------------
 obs <- data_eval$val
 names(obs) <- data_eval$dt
-crps_mpe <- crps(obs, "normal-mixture", m = m, s = s, w = w)
-logs_mpe <- logs(obs, "normal-mixture", m = m, s = s, w = w)
-crps_ecdf <- crps_sample(obs, sample)
-logs_kde <- logs_sample(obs, sample, show_message = FALSE)
-
-# Print results
+w <- matrix(1/m, nrow = h, ncol = m)
+crps_mpe <- crps(obs, "normal-mixture", m = mu, s = Sd, w = w)
+logs_mpe <- logs(obs, "normal-mixture", m = mu, s = Sd, w = w)
+crps_ecdf <- crps_sample(obs, X)
+logs_kde <- logs_sample(obs, X)
 print(cbind(crps_mpe, crps_ecdf, logs_mpe, logs_kde))
 
-## ----eval=FALSE----------------------------------------------------------
-## es_sample(y, dat)
-## vs_sample(y, dat, w = NULL, p = 0.5)
+## ----Subsection-Parameter-estimation-with-scoring-rules, echo=FALSE------
 
-## ----echo = FALSE--------------------------------------------------------
+## ----wrapper-functions-optim---------------------------------------------
+meancrps <- function(y_train, param) mean(crps_norm(y = y_train,
+  mean = param[1], sd = param[2]))
+grad_meancrps <- function(y_train, param) apply(gradcrps_norm(y_train,
+  param[1], param[2]), 2, mean)
+
+## ----parameter-estimation-simulation-------------------------------------
+R <- 1000
+n <- 500
+mu_true <- -1
+sigma_true <- 2
+estimates_ml <- matrix(NA, nrow = R, ncol = 2)
+estimates_crps <- matrix(NA, nrow = R, ncol = 2)  
+for (r in 1:R) {
+  dat <- rnorm(n, mu_true, sigma_true)
+  estimates_crps[r, ] <- optim(par = c(1, 1), fn = meancrps,
+    gr = grad_meancrps, method = "BFGS", y_train = dat)$par
+  estimates_ml[r, ] <- c(mean(dat), sd(dat) * sqrt((n - 1) / n))
+}
+
+## ----parameter-estimation-simulation-results, echo=FALSE, dev='pdf', fig.width=10.4, fig.height=3.5, fig.align = "center", out.width="\\linewidth"----
+# differences between estimates and true parameter values
+dfc <- data.frame(mean = estimates_crps[, 1] - mu_true, sd =
+  estimates_crps[, 2] - sigma_true, score = "CRPS")
+dfl <- data.frame(mean = estimates_ml[, 1] - mu_true, sd =
+  estimates_ml[,2] - sigma_true, score = "LogS")
+dfdiff <- rbind(dfc, dfl)
+
+# boxplot mean parameter
+plotlim <- c(-.35,.35)
+par(mfrow = c(1, 2), mar = c(4, 2, 2, 2))
+boxplot(mean ~ score, data = dfdiff, ylim = plotlim, main =
+  expression(hat(mu) - mu), horizontal = TRUE, las = 1, xlab =
+  "Deviation from the true value", boxwex = 0.25, axes = F,
+  border = c("darkorange", "purple"))
+axis(1, c(-0.3, 0, 0.3))
+abline(v = 0, lty = 2)
+
+# boxplot sd parameter
+boxplot(sd ~ score, data = dfdiff, ylim = plotlim, main =
+  expression(hat(sigma) - sigma), horizontal = TRUE, las = 1,
+  xlab = "Deviation from the true value", boxwex = 0.25,
+  axes = F, border = c("darkorange", "purple"))
+axis(1, c(-0.3, 0, 0.3))
+axis(2, c(1, 2), labels = c("CRPS", "LogS"), lwd = 0, las = 1)
+abline(v = 0, lty = 2)
+
+## ----Section-Multivariate-scoring-rules, echo=FALSE----------------------
+
+## ----Simulated-score-multivariate-example--------------------------------
 names(obs) <- NULL
+es_sample(obs, dat = X)
+vs_sample(obs, dat = X)
 
-## ------------------------------------------------------------------------
-es_sample(obs, dat = sample)
-vs_sample(obs, dat = sample)
+## ----multiple-multivariate-forecasts-parameters-1------------------------
+d <- 10
+mu <- rep(0, d)
+Sigma <- diag(d)
+Sigma[!diag(d)] <- 0.2
+
+## ----multiple-multivariate-forecasts-parameters-2------------------------
+m <- 50
+mu_f <- rep(1, d)
+Sigma_f <- diag(d)
+Sigma_f[!diag(d)] <- 0.1
+
+## ----multiple-multivariate-forecasts-generation--------------------------
+n <- 1000
+fc_obs_list <- vector("list", n)
+obs_array <- matrix(NA, nrow = d, ncol = n)
+fc_array <- array(NA, dim = c(d, m, n))
+for (fc_case in 1:n) {
+  obs_tmp <- drop(mu + rnorm(d) %*% chol(Sigma))
+  fc_tmp <- replicate(m, drop(mu_f + rnorm(d) %*% chol(Sigma_f)))
+  fc_obs_list[[fc_case]] <- list(obs = obs_tmp, fc_sample = fc_tmp)
+  obs_array[, fc_case] <- obs_tmp
+  fc_array[, , fc_case] <- fc_tmp
+}
+
+## ----multiple-multivariate-forecasts-evaluation--------------------------
+es_vec_list <- sapply(fc_obs_list, function(x) es_sample(y = x$obs,
+  dat = x$fc_sample))
+es_vec_array <- sapply(1:n, function(i) es_sample(y = obs_array[, i],
+  dat = fc_array[, , i]))
+head(cbind(es_vec_list, es_vec_array))
 
